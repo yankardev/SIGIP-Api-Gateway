@@ -1,0 +1,297 @@
+name: sigip
+
+# Despliegue local integrando los repositorios independientes de SIGIP.
+# Ejecutar desde SIGIP-Api-Gateway, con los otros repos como carpetas hermanas.
+
+x-backend-build: &backend-build
+  dockerfile_inline: |
+    # syntax=docker/dockerfile:1.7
+    FROM maven:3.9-eclipse-temurin-25 AS build
+    WORKDIR /common
+    COPY --from=common . .
+    RUN --mount=type=cache,target=/root/.m2 mvn -B -Dmaven.test.skip=true install
+    WORKDIR /src
+    COPY . .
+    RUN --mount=type=cache,target=/root/.m2 mvn -B -Dmaven.test.skip=true package \
+        && JAR="$$(find target -maxdepth 1 -type f -name '*.jar' ! -name 'original-*' | head -n 1)" \
+        && test -n "$$JAR" \
+        && cp "$$JAR" /app.jar
+    FROM eclipse-temurin:25-jre
+    RUN useradd --system --uid 1001 sigip
+    USER sigip
+    WORKDIR /app
+    COPY --from=build /app.jar app.jar
+    ENV JAVA_OPTS="-XX:MaxRAMPercentage=70"
+    ENTRYPOINT ["sh", "-c", "exec java $$JAVA_OPTS -jar app.jar"]
+  additional_contexts:
+    common: ../SIGIP-Common
+
+x-ms-env: &ms-env
+  EUREKA_URL: http://discovery-server:9001/eureka/
+  JWT_SECRET: ${JWT_SECRET}
+  DB_USER: root
+  DB_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: sigip-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    ports:
+      - "3307:3306"
+    volumes:
+      - sigip_mysql_data:/var/lib/mysql
+      - ./mysql-init.sql:/docker-entrypoint-initdb.d/01-sigip.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [sigip-net]
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: sigip-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [sigip-net]
+
+  discovery-server:
+    build:
+      <<: *backend-build
+      context: ../SIGIP-Discovery-Server
+    image: sigip/discovery-server:local
+    container_name: sigip-discovery-server
+    environment:
+      PORT: 9001
+    ports: ["9001:9001"]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/9001'"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [sigip-net]
+
+  auth-service:
+    build:
+      <<: *backend-build
+      context: ../SIGIP-Auth-Service
+    image: sigip/auth-service:local
+    container_name: sigip-auth-service
+    environment:
+      <<: *ms-env
+      PORT: 9003
+      DB_URL: jdbc:mysql://mysql:3306/sigip_auth?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=America/Lima
+      SIGIP_ADMIN_USERNAME: ${SIGIP_ADMIN_USERNAME}
+      SIGIP_ADMIN_EMAIL: ${SIGIP_ADMIN_EMAIL}
+      SIGIP_ADMIN_PASSWORD: ${SIGIP_ADMIN_PASSWORD}
+    depends_on:
+      mysql: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }
+    ports: ["9003:9003"]
+    networks: [sigip-net]
+
+  catalog-service:
+    build:
+      <<: *backend-build
+      context: ../SIGIP-Catalog-Service
+    image: sigip/catalog-service:local
+    container_name: sigip-catalog-service
+    environment:
+      <<: *ms-env
+      PORT: 9004
+      DB_URL: jdbc:mysql://mysql:3306/sigip_catalog?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=America/Lima
+    depends_on:
+      mysql: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }
+    ports: ["9004:9004"]
+    networks: [sigip-net]
+
+  design-service:
+    build:
+      <<: *backend-build
+      context: ../SIGIP-Design-Service
+    image: sigip/design-service:local
+    container_name: sigip-design-service
+    environment:
+      <<: *ms-env
+      PORT: 9005
+      DB_URL: jdbc:mysql://mysql:3306/sigip_design?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=America/Lima
+    depends_on:
+      mysql: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }
+      sales-service: { condition: service_started }
+    ports: ["9005:9005"]
+    networks: [sigip-net]
+
+  inventory-service:
+    build:
+      <<: *backend-build
+      context: ../SIGIP-Inventory-Service
+    image: sigip/inventory-service:local
+    container_name: sigip-inventory-service
+    environment:
+      <<: *ms-env
+      PORT: 9006
+      DB_URL: jdbc:mysql://mysql:3306/sigip_inventory?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=America/Lima
+    depends_on:
+      mysql: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }
+    ports: ["9006:9006"]
+    networks: [sigip-net]
+
+  production-service:
+    build:
+      <<: *backend-build
+      context: ../SIGIP-Production-Service
+    image: sigip/production-service:local
+    container_name: sigip-production-service
+    environment:
+      <<: *ms-env
+      PORT: 9007
+      DB_URL: jdbc:mysql://mysql:3306/sigip_production?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=America/Lima
+    depends_on:
+      mysql: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }
+      sales-service: { condition: service_started }
+    ports: ["9007:9007"]
+    networks: [sigip-net]
+
+  sales-service:
+    build:
+      <<: *backend-build
+      context: ../SIGIP-Sales-Service
+    image: sigip/sales-service:local
+    container_name: sigip-sales-service
+    environment:
+      <<: *ms-env
+      PORT: 9008
+      DB_URL: jdbc:mysql://mysql:3306/sigip_sales?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=America/Lima
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      EVENTOS_HABILITADOS: "true"
+    depends_on:
+      mysql: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }
+      catalog-service: { condition: service_started }
+    ports: ["9008:9008"]
+    networks: [sigip-net]
+
+  report-service:
+    build:
+      <<: *backend-build
+      context: ../SIGIP-Report-Service
+    image: sigip/report-service:local
+    container_name: sigip-report-service
+    environment:
+      EUREKA_URL: http://discovery-server:9001/eureka/
+      JWT_SECRET: ${JWT_SECRET}
+      PORT: 9009
+    depends_on:
+      discovery-server: { condition: service_healthy }
+      sales-service: { condition: service_started }
+      inventory-service: { condition: service_started }
+    ports: ["9009:9009"]
+    networks: [sigip-net]
+
+  notification-service:
+    build:
+      <<: *backend-build
+      context: ../SIGIP-Notification-Service
+    image: sigip/notification-service:local
+    container_name: sigip-notification-service
+    environment:
+      <<: *ms-env
+      PORT: 9010
+      DB_URL: jdbc:mysql://mysql:3306/sigip_notification?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=America/Lima
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      EVENTOS_HABILITADOS: "true"
+    depends_on:
+      mysql: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }
+    ports: ["9010:9010"]
+    networks: [sigip-net]
+
+  api-gateway:
+    build:
+      <<: *backend-build
+      context: .
+    image: sigip/api-gateway:local
+    container_name: sigip-api-gateway
+    environment:
+      PORT: 9002
+      EUREKA_URL: http://discovery-server:9001/eureka/
+      CORS_ORIGINS: http://localhost:4200
+    depends_on:
+      discovery-server: { condition: service_healthy }
+      auth-service: { condition: service_started }
+      catalog-service: { condition: service_started }
+      design-service: { condition: service_started }
+      inventory-service: { condition: service_started }
+      production-service: { condition: service_started }
+      sales-service: { condition: service_started }
+      report-service: { condition: service_started }
+      notification-service: { condition: service_started }
+    ports: ["9002:9002"]
+    networks: [sigip-net]
+
+  frontend:
+    build:
+      context: ../SIGIP-Frontend
+    image: sigip/frontend:local
+    container_name: sigip-frontend
+    environment:
+      API_GATEWAY_URL: http://api-gateway:9002
+    depends_on:
+      api-gateway: { condition: service_started }
+    ports: ["4200:80"]
+    networks: [sigip-net]
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: sigip-prometheus
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      api-gateway: { condition: service_started }
+    ports: ["9090:9090"]
+    networks: [sigip-net]
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: sigip-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    depends_on:
+      prometheus: { condition: service_started }
+    ports: ["3000:3000"]
+    volumes:
+      - sigip_grafana_data:/var/lib/grafana
+    networks: [sigip-net]
+
+volumes:
+  sigip_mysql_data:
+  sigip_grafana_data:
+
+networks:
+  sigip-net:
+    driver: bridge

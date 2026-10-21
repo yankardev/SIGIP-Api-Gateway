@@ -1,0 +1,101 @@
+name: SIGIP deployment validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - docker-compose.full.yml
+      - .env.example
+      - mysql-init.sql
+      - prometheus.yml
+      - .github/workflows/deployment-validation.yml
+
+permissions:
+  contents: read
+
+jobs:
+  compose-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gateway
+        uses: actions/checkout@v4
+        with:
+          path: SIGIP-Api-Gateway
+
+      - name: Common
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Common
+          path: SIGIP-Common
+
+      - name: Discovery
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Discovery-Server
+          path: SIGIP-Discovery-Server
+
+      - name: Auth
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Auth-Service
+          path: SIGIP-Auth-Service
+
+      - name: Catalog
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Catalog-Service
+          path: SIGIP-Catalog-Service
+
+      - name: Design
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Design-Service
+          path: SIGIP-Design-Service
+
+      - name: Inventory
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Inventory-Service
+          path: SIGIP-Inventory-Service
+
+      - name: Production
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Production-Service
+          path: SIGIP-Production-Service
+
+      - name: Sales
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Sales-Service
+          path: SIGIP-Sales-Service
+
+      - name: Report
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Report-Service
+          path: SIGIP-Report-Service
+
+      - name: Notification
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Notification-Service
+          path: SIGIP-Notification-Service
+
+      - name: Frontend integration branch
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Frontend
+          ref: feature/frontend-sigip-integracion-local
+          path: SIGIP-Frontend
+
+      - name: Validate Compose
+        working-directory: SIGIP-Api-Gateway
+        run: |
+          cp .env.example .env
+          docker compose -f docker-compose.full.yml config --quiet
+
+      - name: Build complete SIGIP stack
+        working-directory: SIGIP-Api-Gateway
+        run: docker compose -f docker-compose.full.yml build

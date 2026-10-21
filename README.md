@@ -1,20 +1,37 @@
-# api-gateway
+# SIGIP API Gateway
 
-Punto único de entrada (Spring Cloud Gateway).
+Punto único de entrada de SIGIP mediante Spring Cloud Gateway.
 
 ## Funcionalidad
 
-- Rutas `lb://<servicio>`: resuelve las instancias en Eureka y reparte la carga (round robin).
-- `StripPrefix=1`: `/sales-service/api/v1/pedidos` llega a sales como `/api/v1/pedidos`.
+- Rutas `lb://<servicio>` resueltas mediante Eureka y Spring Cloud LoadBalancer.
+- `StripPrefix=1`: `/sales-service/api/v1/pedidos` llega a Sales como `/api/v1/pedidos`.
 - CORS configurable con `CORS_ORIGINS` (por defecto `http://localhost:4200`).
-- `/actuator/gateway/routes` muestra las rutas activas.
+- Actuator expone health, métricas, Prometheus y rutas del Gateway.
 
-Variables: `EUREKA_URL`, `CORS_ORIGINS`; en la nube `AUTH_URL`, `CATALOG_URL`, ... (una por servicio).
+Variables principales: `EUREKA_URL` y `CORS_ORIGINS`.
 
-## Ejecución
+## Ejecución local
 
-Puerto `8090`.
+Puerto: `9002`.
 
-```bash
-mvn -pl backend/api-gateway -am spring-boot:run
+```powershell
+mvn spring-boot:run
 ```
+
+Con Eureka en `http://localhost:9001`, las rutas del Gateway quedan bajo:
+
+- `/auth-service/**`
+- `/catalog-service/**`
+- `/sales-service/**`
+- `/design-service/**`
+- `/production-service/**`
+- `/inventory-service/**`
+- `/notification-service/**`
+- `/report-service/**`
+
+## Despliegue completo de los repositorios independientes
+
+`docker-compose.full.yml` construye y levanta MySQL, RabbitMQ, Eureka, los microservicios, Gateway, Angular, Prometheus y Grafana usando las carpetas hermanas `SIGIP-*`.
+
+Consulta [DEPLOYMENT.md](DEPLOYMENT.md) para los comandos y las evidencias de despliegue/observabilidad.
