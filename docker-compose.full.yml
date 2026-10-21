@@ -9,22 +9,31 @@ x-backend-build: &backend-build
     FROM maven:3.9-eclipse-temurin-25 AS build
     WORKDIR /common
     COPY --from=common . .
-    RUN --mount=type=cache,target=/root/.m2 mvn -B -Dmaven.test.skip=true install
+    RUN --mount=type=cache,target=/root/.m2,sharing=locked mvn -B clean install
     WORKDIR /src
     COPY . .
-    RUN --mount=type=cache,target=/root/.m2 mvn -B -Dmaven.test.skip=true package \
+    RUN --mount=type=cache,target=/root/.m2,sharing=locked mvn -B clean verify \
         && JAR="$$(find target -maxdepth 1 -type f -name '*.jar' ! -name 'original-*' | head -n 1)" \
         && test -n "$$JAR" \
         && cp "$$JAR" /app.jar
     FROM eclipse-temurin:25-jre
-    RUN useradd --system --uid 1001 sigip
+    RUN apt-get update && apt-get install -y --no-install-recommends curl \
+        && rm -rf /var/lib/apt/lists/* \
+        && useradd --system --uid 1001 sigip
     USER sigip
     WORKDIR /app
     COPY --from=build /app.jar app.jar
-    ENV JAVA_OPTS="-XX:MaxRAMPercentage=70"
+    ENV JAVA_OPTS="-Xms64m -Xmx384m -XX:ActiveProcessorCount=2"
     ENTRYPOINT ["sh", "-c", "exec java $$JAVA_OPTS -jar app.jar"]
   additional_contexts:
     common: ../SIGIP-Common
+
+x-backend-health: &backend-health
+  test: ["CMD-SHELL", "curl --fail --silent http://localhost:$$PORT/actuator/health >/dev/null"]
+  interval: 10s
+  timeout: 5s
+  start_period: 90s
+  retries: 30
 
 x-ms-env: &ms-env
   EUREKA_URL: http://discovery-server:9001/eureka/
@@ -75,11 +84,7 @@ services:
     environment:
       PORT: 9001
     ports: ["9001:9001"]
-    healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/9001'"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
+    healthcheck: *backend-health
     networks: [sigip-net]
 
   auth-service:
@@ -98,6 +103,7 @@ services:
     depends_on:
       mysql: { condition: service_healthy }
       discovery-server: { condition: service_healthy }
+    healthcheck: *backend-health
     ports: ["9003:9003"]
     networks: [sigip-net]
 
@@ -114,6 +120,7 @@ services:
     depends_on:
       mysql: { condition: service_healthy }
       discovery-server: { condition: service_healthy }
+    healthcheck: *backend-health
     ports: ["9004:9004"]
     networks: [sigip-net]
 
@@ -130,7 +137,8 @@ services:
     depends_on:
       mysql: { condition: service_healthy }
       discovery-server: { condition: service_healthy }
-      sales-service: { condition: service_started }
+      sales-service: { condition: service_healthy }
+    healthcheck: *backend-health
     ports: ["9005:9005"]
     networks: [sigip-net]
 
@@ -147,6 +155,7 @@ services:
     depends_on:
       mysql: { condition: service_healthy }
       discovery-server: { condition: service_healthy }
+    healthcheck: *backend-health
     ports: ["9006:9006"]
     networks: [sigip-net]
 
@@ -163,7 +172,8 @@ services:
     depends_on:
       mysql: { condition: service_healthy }
       discovery-server: { condition: service_healthy }
-      sales-service: { condition: service_started }
+      sales-service: { condition: service_healthy }
+    healthcheck: *backend-health
     ports: ["9007:9007"]
     networks: [sigip-net]
 
@@ -186,7 +196,8 @@ services:
       mysql: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
       discovery-server: { condition: service_healthy }
-      catalog-service: { condition: service_started }
+      catalog-service: { condition: service_healthy }
+    healthcheck: *backend-health
     ports: ["9008:9008"]
     networks: [sigip-net]
 
@@ -202,8 +213,9 @@ services:
       PORT: 9009
     depends_on:
       discovery-server: { condition: service_healthy }
-      sales-service: { condition: service_started }
-      inventory-service: { condition: service_started }
+      sales-service: { condition: service_healthy }
+      inventory-service: { condition: service_healthy }
+    healthcheck: *backend-health
     ports: ["9009:9009"]
     networks: [sigip-net]
 
@@ -226,6 +238,7 @@ services:
       mysql: { condition: service_healthy }
       rabbitmq: { condition: service_healthy }
       discovery-server: { condition: service_healthy }
+    healthcheck: *backend-health
     ports: ["9010:9010"]
     networks: [sigip-net]
 
@@ -241,14 +254,15 @@ services:
       CORS_ORIGINS: http://localhost:4200
     depends_on:
       discovery-server: { condition: service_healthy }
-      auth-service: { condition: service_started }
-      catalog-service: { condition: service_started }
-      design-service: { condition: service_started }
-      inventory-service: { condition: service_started }
-      production-service: { condition: service_started }
-      sales-service: { condition: service_started }
-      report-service: { condition: service_started }
-      notification-service: { condition: service_started }
+      auth-service: { condition: service_healthy }
+      catalog-service: { condition: service_healthy }
+      design-service: { condition: service_healthy }
+      inventory-service: { condition: service_healthy }
+      production-service: { condition: service_healthy }
+      sales-service: { condition: service_healthy }
+      report-service: { condition: service_healthy }
+      notification-service: { condition: service_healthy }
+    healthcheck: *backend-health
     ports: ["9002:9002"]
     networks: [sigip-net]
 
@@ -260,7 +274,12 @@ services:
     environment:
       API_GATEWAY_URL: http://api-gateway:9002
     depends_on:
-      api-gateway: { condition: service_started }
+      api-gateway: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
     ports: ["4200:80"]
     networks: [sigip-net]
 
@@ -271,7 +290,7 @@ services:
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     depends_on:
-      api-gateway: { condition: service_started }
+      api-gateway: { condition: service_healthy }
     ports: ["9090:9090"]
     networks: [sigip-net]
 

@@ -4,12 +4,6 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - docker-compose.full.yml
-      - .env.example
-      - mysql-init.sql
-      - prometheus.yml
-      - .github/workflows/deployment-validation.yml
 
 permissions:
   contents: read
@@ -17,6 +11,7 @@ permissions:
 jobs:
   compose-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Gateway
         uses: actions/checkout@v4
@@ -97,4 +92,26 @@ jobs:
 
       - name: Build complete SIGIP stack
         working-directory: SIGIP-Api-Gateway
+        env:
+          COMPOSE_PARALLEL_LIMIT: 2
         run: docker compose -f docker-compose.full.yml build
+
+      - name: Start MySQL, RabbitMQ and all SIGIP services
+        working-directory: SIGIP-Api-Gateway
+        run: docker compose -f docker-compose.full.yml up -d --wait --wait-timeout 600
+
+      - name: Verify routes, authentication, CRUD and RabbitMQ events
+        working-directory: SIGIP-Api-Gateway
+        run: python3 scripts/smoke-test.py --write-test-data
+
+      - name: Container diagnostics
+        if: always()
+        working-directory: SIGIP-Api-Gateway
+        run: |
+          docker compose -f docker-compose.full.yml ps -a
+          docker compose -f docker-compose.full.yml logs --no-color --tail=100
+
+      - name: Stop disposable CI stack
+        if: always()
+        working-directory: SIGIP-Api-Gateway
+        run: docker compose -f docker-compose.full.yml down -v

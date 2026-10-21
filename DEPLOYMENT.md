@@ -6,45 +6,56 @@ Este repositorio contiene el archivo de orquestación para levantar los reposito
 
 - Docker Desktop con Docker Compose moderno.
 - Los 12 repositorios clonados como carpetas hermanas.
-- En `SIGIP-Frontend`, usar la rama `feature/frontend-sigip-integracion-local` mientras el PR de integración no haya sido fusionado.
+- Usar la rama `main` en los 12 repositorios.
 
 ## Preparación
 
 Desde `SIGIP-Api-Gateway`:
 
 ```powershell
-Copy-Item .env.example .env
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
 Para una demo real cambia las contraseñas y el secreto JWT del archivo `.env` antes de levantar el stack.
 
-Actualiza el frontend de integración:
+Actualiza los 12 repositorios desde la carpeta que los contiene:
 
 ```powershell
-cd ..\SIGIP-Frontend
-git fetch origin
-git switch feature/frontend-sigip-integracion-local
-git pull
-cd ..\SIGIP-Api-Gateway
+cd ..
+Get-ChildItem -Directory -Filter "SIGIP-*" | ForEach-Object {
+    git -C $_.FullName switch main
+    if ($LASTEXITCODE -ne 0) { throw "No se pudo cambiar a main: $($_.Name)" }
+    git -C $_.FullName pull --ff-only
+    if ($LASTEXITCODE -ne 0) { throw "No se pudo actualizar: $($_.Name)" }
+}
+cd SIGIP-Api-Gateway
 ```
 
-Actualiza también los demás repositorios antes del build.
+Si ya tienes `.env`, conserva tus valores; no lo sobrescribas al actualizar.
 
 ## Construir y levantar
 
 ```powershell
-docker compose -f docker-compose.full.yml config
+docker compose -f docker-compose.full.yml config --quiet
 docker compose -f docker-compose.full.yml build
-docker compose -f docker-compose.full.yml up -d
+docker compose -f docker-compose.full.yml up -d --wait --wait-timeout 600
 ```
 
-La primera compilación demora porque cada imagen backend instala `SIGIP-Common` en su etapa Maven y compila su microservicio. Los siguientes builds reutilizan la caché de Maven/BuildKit.
+La primera compilación demora porque cada imagen backend instala `SIGIP-Common` en su etapa Maven y ejecuta la compilación y todas las pruebas de su microservicio. Cada servicio espera la salud de sus dependencias antes de arrancar. Los siguientes builds reutilizan la caché de Maven/BuildKit.
 
 ## Verificación
 
 ```powershell
 docker compose -f docker-compose.full.yml ps
 ```
+
+La validación automática comprueba la salud de los diez procesos Java, las ocho rutas a través de nginx/Gateway, el inicio de sesión y los permisos, y las consultas de Reportes a Ventas e Inventario. Con Python 3 instalado:
+
+```powershell
+python scripts/smoke-test.py
+```
+
+Usa `SIGIP_ADMIN_USERNAME` y `SIGIP_ADMIN_PASSWORD` de `.env` (o del entorno). No imprime contraseñas ni tokens. En GitHub Actions se ejecuta además `--write-test-data`: crea registros temporales, comprueba GET/POST/PUT/DELETE y verifica que un pedido genere su notificación mediante RabbitMQ; después elimina los registros de prueba. Ese modo está pensado para el stack desechable de CI.
 
 Endpoints principales:
 
