@@ -83,11 +83,10 @@ jobs:
           repository: yankardev/SIGIP-Notification-Service
           path: SIGIP-Notification-Service
 
-      - name: Frontend integration branch
+      - name: Frontend
         uses: actions/checkout@v4
         with:
           repository: yankardev/SIGIP-Frontend
-          ref: feature/frontend-sigip-integracion-local
           path: SIGIP-Frontend
 
       - name: Validate Compose
