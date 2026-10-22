@@ -84,10 +84,14 @@ jobs:
           repository: yankardev/SIGIP-Frontend
           path: SIGIP-Frontend
 
+      - name: Prepare local environment
+        working-directory: SIGIP-Api-Gateway
+        shell: pwsh
+        run: ./scripts/prepare-env.ps1
+
       - name: Validate Compose
         working-directory: SIGIP-Api-Gateway
         run: |
-          cp .env.example .env
           docker compose -f docker-compose.full.yml config --quiet
 
       - name: Build complete SIGIP stack

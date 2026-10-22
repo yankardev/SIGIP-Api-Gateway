@@ -13,10 +13,12 @@ Este repositorio contiene el archivo de orquestación para levantar los reposito
 Desde `SIGIP-Api-Gateway`:
 
 ```powershell
-if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+.\scripts\prepare-env.ps1
 ```
 
-Para una demo real cambia las contraseñas y el secreto JWT del archivo `.env` antes de levantar el stack.
+Este comando crea `.env` si falta. Si `JWT_SECRET` falta, es inválido o tiene menos de 32 bytes, genera una clave aleatoria en Base64. Conserva una clave válida y las demás configuraciones, incluidas las contraseñas de bases existentes. Corrige también el valor inválido de la plantilla antigua.
+
+Para una demo real cambia las contraseñas del archivo `.env` antes de levantar el stack. Si reemplazas la clave JWT, vuelve a iniciar sesión porque los tokens anteriores dejan de ser válidos.
 
 Actualiza los 12 repositorios desde la carpeta que los contiene:
 

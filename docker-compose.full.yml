@@ -37,7 +37,7 @@ x-backend-health: &backend-health
 
 x-ms-env: &ms-env
   EUREKA_URL: http://discovery-server:9001/eureka/
-  JWT_SECRET: ${JWT_SECRET}
+  JWT_SECRET: ${JWT_SECRET:?Ejecuta scripts/prepare-env.ps1 para preparar .env}
   DB_USER: root
   DB_PASSWORD: ${MYSQL_ROOT_PASSWORD}
 
@@ -209,7 +209,7 @@ services:
     container_name: sigip-report-service
     environment:
       EUREKA_URL: http://discovery-server:9001/eureka/
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:?Ejecuta scripts/prepare-env.ps1 para preparar .env}
       PORT: 9009
     depends_on:
       discovery-server: { condition: service_healthy }
