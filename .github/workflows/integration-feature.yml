@@ -1,0 +1,135 @@
+name: SIGIP Integrated Build
+
+on:
+  push:
+    branches: ["feature/sigip-sistema-interno"]
+  workflow_dispatch:
+
+jobs:
+  build-platform:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout API Gateway
+        uses: actions/checkout@v4
+        with:
+          path: SIGIP-Api-Gateway
+
+      - name: Checkout Common
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Common
+          ref: feature/sigip-sistema-interno
+          path: SIGIP-Common
+
+      - name: Checkout Discovery
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Discovery-Server
+          ref: feature/sigip-sistema-interno
+          path: SIGIP-Discovery-Server
+
+      - name: Checkout Auth
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Auth-Service
+          ref: feature/sigip-sistema-interno
+          path: SIGIP-Auth-Service
+
+      - name: Checkout Catalog
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Catalog-Service
+          ref: feature/sigip-sistema-interno
+          path: SIGIP-Catalog-Service
+
+      - name: Checkout Sales
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Sales-Service
+          ref: feature/sigip-sistema-interno
+          path: SIGIP-Sales-Service
+
+      - name: Checkout Design
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Design-Service
+          ref: feature/sigip-sistema-interno
+          path: SIGIP-Design-Service
+
+      - name: Checkout Inventory
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Inventory-Service
+          ref: feature/sigip-sistema-interno
+          path: SIGIP-Inventory-Service
+
+      - name: Checkout Production
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Production-Service
+          ref: feature/sigip-sistema-interno
+          path: SIGIP-Production-Service
+
+      - name: Checkout Report
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Report-Service
+          ref: feature/sigip-sistema-interno
+          path: SIGIP-Report-Service
+
+      - name: Checkout Notification
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Notification-Service
+          ref: feature/sigip-sistema-interno
+          path: SIGIP-Notification-Service
+
+      - name: Checkout Frontend
+        uses: actions/checkout@v4
+        with:
+          repository: yankardev/SIGIP-Frontend
+          ref: feature/sigip-sistema-interno
+          path: SIGIP-Frontend
+
+      - name: Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Install Common
+        run: mvn -B -f SIGIP-Common/pom.xml clean install -DskipTests
+
+      - name: Compile Java services
+        shell: bash
+        run: |
+          set -e
+          for repo in \
+            SIGIP-Discovery-Server \
+            SIGIP-Api-Gateway \
+            SIGIP-Auth-Service \
+            SIGIP-Catalog-Service \
+            SIGIP-Sales-Service \
+            SIGIP-Design-Service \
+            SIGIP-Inventory-Service \
+            SIGIP-Production-Service \
+            SIGIP-Report-Service \
+            SIGIP-Notification-Service
+          do
+            echo "========== $repo =========="
+            mvn -B -f "$repo/pom.xml" clean package -DskipTests
+          done
+
+      - name: Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: SIGIP-Frontend/package-lock.json
+
+      - name: Build Angular
+        working-directory: SIGIP-Frontend
+        run: |
+          npm ci
+          npm run build
