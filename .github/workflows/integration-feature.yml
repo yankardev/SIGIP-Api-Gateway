@@ -1,6 +1,6 @@
 name: SIGIP Integrated Build
 
-# Compila las ramas feature de los 12 repositorios como una sola plataforma.
+# Valida las ramas feature de los 12 repositorios como una sola plataforma.
 on:
   push:
     branches: ["feature/sigip-sistema-interno"]
@@ -100,9 +100,9 @@ jobs:
           cache: maven
 
       - name: Install Common
-        run: mvn -B -f SIGIP-Common/pom.xml clean install -DskipTests
+        run: mvn -B -f SIGIP-Common/pom.xml clean install
 
-      - name: Compile Java services
+      - name: Verify Java services
         shell: bash
         run: |
           set -e
@@ -119,7 +119,7 @@ jobs:
             SIGIP-Notification-Service
           do
             echo "========== $repo =========="
-            mvn -B -f "$repo/pom.xml" clean package -DskipTests
+            mvn -B -f "$repo/pom.xml" clean verify
           done
 
       - name: Node 24
