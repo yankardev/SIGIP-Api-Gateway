@@ -1,5 +1,6 @@
 name: SIGIP Integrated Build
 
+# Compila las ramas feature de los 12 repositorios como una sola plataforma.
 on:
   push:
     branches: ["feature/sigip-sistema-interno"]
