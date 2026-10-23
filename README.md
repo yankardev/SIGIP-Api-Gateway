@@ -34,4 +34,6 @@ Con Eureka en `http://localhost:9001`, las rutas del Gateway quedan bajo:
 
 `docker-compose.full.yml` construye y levanta MySQL, RabbitMQ, Eureka, los microservicios, Gateway, Angular, Prometheus y Grafana usando las carpetas hermanas `SIGIP-*`.
 
+Para la demo empresarial, `scripts/aplicar-datos-demo.ps1` aplica de forma idempotente el catálogo visual, las opciones de personalización de precios y los clientes de prueba sobre el contenedor MySQL existente.
+
 Consulta [DEPLOYMENT.md](DEPLOYMENT.md) para los comandos y las evidencias de despliegue/observabilidad.
