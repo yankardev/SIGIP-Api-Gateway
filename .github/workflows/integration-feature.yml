@@ -1,6 +1,7 @@
 name: SIGIP Integrated Build
 
 # Valida las ramas feature de los 12 repositorios como una sola plataforma.
+# Ejecuta pruebas reales para detectar incompatibilidades antes de construir Docker.
 on:
   push:
     branches: ["feature/sigip-sistema-interno"]
